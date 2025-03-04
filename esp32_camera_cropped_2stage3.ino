@@ -45,56 +45,6 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
 #define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
 
-// ===========================
-// Enter your WiFi credentials
-// ===========================
-// Wi-Fi 熱點設定 (依序設定 SSID 和密碼)
-const char* wifiNetworks[][2] = {
-  {"mimas-dlink-23C6", "0926889555"},
-  {"AI-08-2775", "aiclass1234"},
-  {"justin_mimas_p30pro", "0926889555"}
-};
-
-const int wifiCount = sizeof(wifiNetworks) / sizeof(wifiNetworks[0]);
-int connectToWiFi() {
-  Serial.println("嘗試連接 Wi-Fi 熱點...");
-#if defined(ESP32) || defined(ESP8266)
-    WiFi.setAutoReconnect(true);
-#endif
-  for (int i = 0; i < wifiCount; i++) {
-    const char* ssid = wifiNetworks[i][0];
-    const char* password = wifiNetworks[i][1];
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("已經成功連接，不需要再次呼叫 WiFi.begin()。");
-      break;
-    }
-
-    Serial.printf("嘗試連接到 SSID: %s\n", ssid);
-    WiFi.begin(ssid, password);
-
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-      delay(1000);  // 增加等待時間，避免過於頻繁的 Wi-Fi 嘗試
-      Serial.print(".");
-      attempts++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf("\n成功連接到 SSID: %s\n", ssid);
-      Serial.printf("IP 地址: %s\n", WiFi.localIP().toString().c_str());
-      return WiFi.status();
-    } else {
-      Serial.printf("\n無法連接到 SSID: %s，嘗試下一個...\n", ssid);
-      WiFi.disconnect(true);  // 清理之前的連線嘗試
-      delay(1000);  // 短暫延遲，給系統時間進行重置
-    }
-  }
-
-  Serial.println("所有 Wi-Fi 熱點均無法連接，請檢查設定或環境。");
-  return WiFi.status();
-}
-
 #define PROJECT_ID "my-esp32-proj-449103"
 #define CLIENT_EMAIL "myesp32app-service@my-esp32-proj-449103.iam.gserviceaccount.com"
 const char PRIVATE_KEY[] PROGMEM = "-----BEGIN PRIVATE KEY-----\n"
@@ -170,6 +120,10 @@ public:
         ei_printf("\n");
         
     }
+    const std::vector<std::vector<ei_impulse_result_bounding_box_t>>& getGrid() const {
+        return grid;
+    }
+
 
     void print_grid() {
       ei_printf("=====================================================================================\n");
@@ -184,7 +138,7 @@ public:
 };
 // GoogleSheetClient GSheet;
 // void uploadToGoogleSheet(pillbox_manager);
-void uploadToGoogleSheet(pillbox_manager &manager){
+void uploadToGoogleSheet(pillbox_manager& manager){
   if(!GSheet.ready()){
     Serial.println("Google Sheet client not ready!");
     return;
@@ -193,10 +147,10 @@ void uploadToGoogleSheet(pillbox_manager &manager){
 
   valueRange.add("range", "Sheet1!A2:E19");
   valueRange.add("majorDimension","ROWS");
-
-  for(size_t i=0; i<18; i++){
-    if(!manager.grid[i].empty()){
-      const auto &item=manager.grid[i][0];
+  const auto& grid=manager.getGrid();
+  for(size_t i=0; i<grid.size(); i++){
+    if(!grid[i].empty()){
+      const auto &item=grid[i][0];
       valueRange.set("values/["+String(i)+"]/[0]",String(i+1));
       valueRange.set("values/["+String(i)+"]/[1]", item.label);
       valueRange.set("values/[" + String(i) + "]/[2]", String(item.value, 2));
@@ -302,6 +256,59 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 // 設定我的結果管理員物件:
 pillbox_manager pillbox_mgr;
 
+
+
+// ===========================
+// Enter your WiFi credentials
+// ===========================
+// Wi-Fi 熱點設定 (依序設定 SSID 和密碼)
+const char* wifiNetworks[][2] = {
+  {"mimas-dlink-23C6", "0926889555"},
+  {"AI-08-2775", "aiclass1234"},
+  {"justin_mimas_p30pro", "0926889555"}
+};
+
+const int wifiCount = sizeof(wifiNetworks) / sizeof(wifiNetworks[0]);
+int connectToWiFi() {
+  Serial.println("嘗試連接 Wi-Fi 熱點...");
+
+  WiFi.setAutoReconnect(true);
+
+  for (int i = 0; i < wifiCount; i++) {
+    const char* ssid = wifiNetworks[i][0];
+    const char* password = wifiNetworks[i][1];
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("已經成功連接，不需要再次呼叫 WiFi.begin()。");
+      break;
+    }
+
+    Serial.printf("嘗試連接到 SSID: %s\n", ssid);
+    WiFi.begin(ssid, password);
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+      delay(1000);  // 增加等待時間，避免過於頻繁的 Wi-Fi 嘗試
+      Serial.print(".");
+      attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("\n成功連接到 SSID: %s\n", ssid);
+      Serial.printf("IP 地址: %s\n", WiFi.localIP().toString().c_str());
+      return WiFi.status();
+    } else {
+      Serial.printf("\n無法連接到 SSID: %s,嘗試下一個...\n", ssid);
+      WiFi.disconnect(true);  // 清理之前的連線嘗試
+      delay(1000);  // 短暫延遲，給系統時間進行重置
+    }
+  }
+
+  Serial.println("所有 Wi-Fi 熱點均無法連接，請檢查設定或環境。");
+  return WiFi.status();
+}
+
+
 void setup() {
     Serial.begin(115200);
     while (!Serial);
@@ -309,9 +316,6 @@ void setup() {
 
     GSheet.printf("ESP Google Sheet Client v%s\n\n", ESP_GOOGLE_SHEET_CLIENT_VERSION);
 
-#if defined(ESP32) || defined(ESP8266)
-    WiFi.setAutoReconnect(true);
-#endif
   gsheet_status=connectToWiFi();
   
   // 有連上線在將 GSheet建立
