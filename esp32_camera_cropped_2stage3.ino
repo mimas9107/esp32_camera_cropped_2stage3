@@ -43,7 +43,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 #define GET_ROUND                        2     // 取第2回合的資料
 #define MAX_ROUND                        3
 
-#define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
+// #define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
 
 #define PROJECT_ID "my-esp32-proj-449103"
 #define CLIENT_EMAIL "myesp32app-service@my-esp32-proj-449103.iam.gserviceaccount.com"
@@ -150,12 +150,12 @@ void uploadToGoogleSheet(pillbox_manager& manager){
   const auto& grid=manager.getGrid();
   for(size_t i=0; i<grid.size(); i++){
     if(!grid[i].empty()){
-      const auto &item=grid[i][0];
-      valueRange.set("values/["+String(i)+"]/[0]",String(i+1));
-      valueRange.set("values/["+String(i)+"]/[1]", item.label);
-      valueRange.set("values/[" + String(i) + "]/[2]", String(item.value, 2));
-      valueRange.set("values/[" + String(i) + "]/[3]", String(item.x));
-      valueRange.set("values/[" + String(i) + "]/[4]", String(item.y));
+      const auto &item=grid[i][0]; // 假設每個格子只有一個物件
+      valueRange.set("values/["+String(i)+"]/[0]",String(i+1)); // Grid 編號 (A列)
+      valueRange.set("values/["+String(i)+"]/[1]", item.label); // 標籤 (B列)
+      valueRange.set("values/[" + String(i) + "]/[2]", String(item.value, 2)); // 信心度 (C列)
+      valueRange.set("values/[" + String(i) + "]/[3]", String(item.x)); // x 座標 (D列)
+      valueRange.set("values/[" + String(i) + "]/[4]", String(item.y)); // y 座標 (E列)
 
     }
   }
@@ -359,7 +359,7 @@ void loop()
     if(rounds>MAX_ROUND){
       pillbox_mgr.print_grid();
       uploadToGoogleSheet(pillbox_mgr);
-      ei_sleep(30000);
+      ei_sleep(60000);
       rounds=1;
     }
     
@@ -444,41 +444,6 @@ void loop()
   //模擬
   
 #else // 跑推論要用到的函數本體定義:
-void detect_pills(std::vector<ei_impulse_result_bounding_box_t> &detected_pills) {
-    snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-    if (!snapshot_buf) {
-        ei_printf("Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_get_data;
-
-    if (!ei_camera_capture(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf)) {
-        ei_printf("Failed to capture image\n");
-        free(snapshot_buf);
-        return;
-    }
-
-    ei_impulse_result_t result = { 0 };
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        ei_printf("Failed to run classifier (%d)\n", err);
-        free(snapshot_buf);
-        return;
-    }
-
-    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if (bb.value < CLASS_CONFIDENCE) {
-            continue;
-        }
-        detected_pills.push_back(bb);
-    }
-
-    free(snapshot_buf);
-}
 
 bool ei_camera_init() {
     if (is_initialised) return true;
