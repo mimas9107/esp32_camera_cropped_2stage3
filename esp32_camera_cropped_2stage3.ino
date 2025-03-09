@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include "time.h"
 #include <ESP_Google_Sheet_Client.h>
 
 #define PIN        12
@@ -105,19 +106,29 @@ private:
 public:
     pillbox_manager() {
         grid.resize(18);
+        for(int i=0; i<18; i++){
+          grid[i]=std::vector<ei_impulse_result_bounding_box_t>();
+        }
     }
 
     void record(const std::vector<ei_impulse_result_bounding_box_t> &detected_pills, int grid_id) {
-        if (grid_id >= 18) {
+        if ( grid_id<0 || grid_id >= 18) {
             ei_printf("[pillbox_manager] Failed to put data in record!\n");
             return;
         }
         grid[grid_id] = detected_pills; // 直接覆蓋最新結果
         ei_printf("[pillbox_manager]Recorded grid[%d]: %d items: ", grid_id, (int)detected_pills.size());
-        for(int i=0; i<detected_pills.size();i++){
-          ei_printf("{%s, %f}, ", detected_pills[i].label, detected_pills[i].value);
-        }
-        ei_printf("\n");
+        
+        if(detected_pills.empty()){
+          // ei_impulse_result_bounding_box_t tmp={};
+          // grid[grid_id]=&tmp;
+          ei_printf("No pills detected in this grid\n");
+        }else{
+          for(int i=0; i<detected_pills.size();i++){
+            ei_printf("{%s, %f}, ", detected_pills[i].label, detected_pills[i].value);
+          }
+          ei_printf("\n");
+        }        
         
     }
     const std::vector<std::vector<ei_impulse_result_bounding_box_t>>& getGrid() const {
@@ -128,10 +139,17 @@ public:
     void print_grid() {
       ei_printf("=====================================================================================\n");
         for (size_t i = 0; i < grid.size(); i++) {
-            ei_printf("grid[%d]: %d items\n", (int)i, (int)grid[i].size());
-            for (const auto &item : grid[i]) {
-                ei_printf("  %s, value:%f, x: %d, y: %d\n", item.label, item.value, item.x, item.y);
+            // ei_printf("grid[%d]: %d items\n", (int)i, (int)grid[i].size());
+            if(grid[i].empty()){
+              ei_printf("No pills detected, ( 0 items)\n");
             }
+            else{
+              ei_printf("%d items: ",(int)grid[i].size());
+              for (const auto &item : grid[i]) {
+                ei_printf("  %s, value:%f, x: %d, y: %d\n", item.label, item.value, item.x, item.y);
+              }
+              ei_printf("\n");
+            }            
         }
       ei_printf("=====================================================================================\n");
     }
@@ -143,26 +161,48 @@ void uploadToGoogleSheet(pillbox_manager& manager){
     Serial.println("Google Sheet client not ready!");
     return;
   }
-  FirebaseJson valueRange;
+  // 寫入時間 D1
+  char timestr[20];
+  struct tm timeinfo;
+  getLocalTime(&timeinfo);
+  strftime(timestr,20,"%Y-%m-%d-%H:%M:%S",&timeinfo);
+  Serial.println(timestr);
+  Serial.println();
 
-  valueRange.add("range", "Sheet1!A2:E19");
+  FirebaseJson valueRange;
+  valueRange.add("range", "Sheet1!A1:K19");
   valueRange.add("majorDimension","ROWS");
+
+  valueRange.set("values/[0]/[0]","compartment");
+  valueRange.set("values/[0]/[1]","count");
+  valueRange.set("values/[0]/[2]","medication");
+  valueRange.set("values/[0]/[3]",timestr);
   const auto& grid=manager.getGrid();
   for(size_t i=0; i<grid.size(); i++){
+    
     if(!grid[i].empty()){
-      const auto &item=grid[i][0]; // 假設每個格子只有一個物件
-      valueRange.set("values/["+String(i)+"]/[0]",String(i+1)); // Grid 編號 (A列)
-      valueRange.set("values/["+String(i)+"]/[1]", item.label); // 標籤 (B列)
-      valueRange.set("values/[" + String(i) + "]/[2]", String(item.value, 2)); // 信心度 (C列)
-      valueRange.set("values/[" + String(i) + "]/[3]", String(item.x)); // x 座標 (D列)
-      valueRange.set("values/[" + String(i) + "]/[4]", String(item.y)); // y 座標 (E列)
+      const auto &item=grid[i][0];
+      // 關鍵修改：即使沒有偵測到藥丸，也要上傳該格資訊 
+      valueRange.set("values/["+String(i+1)+"]/[0]",String(i+1)); // Grid 編號 (A列)
+      if(grid[i].empty()){
+        // 如果該格沒有藥丸，上傳空值或預設值
+        valueRange.set("values/["+String(i+1)+"]/[1]",String(0)); // 藥丸數量 (B欄)
+        valueRange.set("values/["+String(i+1)+"]/[2]",String("N/A")); // 藥丸標籤="N/A" (C欄)
 
+      }
+
+      valueRange.set("values/["+String(i+1)+"]/[1]",String(grid[i].size())); // 藥丸數量 (B欄)
+      for(size_t j=0; j<grid[i].size();j++){
+        valueRange.set("values/["+String(i+1)+"]/["+String(j+2)+"]",grid[i][j].label); // 標籤 (C欄,D,E,...)
+        // valueRange.set("values/[" + String(i) + "]/[j+2]", String(item.value, 2)); // 原本信心度,先保留寫法 (D欄,F,H...)
+      }
     }
   }
   FirebaseJson response;
-  bool success = GSheet.values.update(&response, GOOGLE_SHEET_ID, "Sheet1!A2:E19", &valueRange);
+  bool success = GSheet.values.update(&response, GOOGLE_SHEET_ID, "Sheet1!A1:K19", &valueRange);
   if (success) {
     Serial.println("Data uploaded successfully!");
+    return;
   } else {
     Serial.println("Failed to upload data.");
     Serial.println(GSheet.errorReason());
@@ -256,8 +296,29 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 // 設定我的結果管理員物件:
 pillbox_manager pillbox_mgr;
 
+//網路校正時間
+const char* ntpServer="pool.ntp.org";
+const long gmtOffset_sec=8*60*60;
+const int daylightOffset_sec=0;
+void printLocalTime(){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo,"%A, %B %d %Y %H:%M:%S");
+  Serial.println("Time variables");
+  
+  char timeHour[3];
+  strftime(timeHour,3,"%H",&timeinfo);
+  Serial.println(timeHour);
 
-
+  char timeWeekDay[10];
+  strftime(timeWeekDay,10,"%A",&timeinfo);
+  Serial.println(timeWeekDay);
+  Serial.println();
+  
+}
 // ===========================
 // Enter your WiFi credentials
 // ===========================
@@ -296,6 +357,12 @@ int connectToWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("\n成功連接到 SSID: %s\n", ssid);
       Serial.printf("IP 地址: %s\n", WiFi.localIP().toString().c_str());
+
+      delay(1000);
+      Serial.printf("NTP calibration");
+      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      printLocalTime();
+
       return WiFi.status();
     } else {
       Serial.printf("\n無法連接到 SSID: %s,嘗試下一個...\n", ssid);
@@ -316,9 +383,9 @@ void setup() {
 
     GSheet.printf("ESP Google Sheet Client v%s\n\n", ESP_GOOGLE_SHEET_CLIENT_VERSION);
 
-  gsheet_status=connectToWiFi();
-  
-  // 有連上線在將 GSheet建立
+    gsheet_status=connectToWiFi();
+
+  // 有連上線再將 Google Sheet物件建立
   if(gsheet_status == WL_CONNECTED){
     GSheet.setTokenCallback(tokenStatusCallback);
     GSheet.setPrerefreshSeconds(10 * 60);
