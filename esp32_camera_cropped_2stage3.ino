@@ -44,7 +44,10 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 #define GET_ROUND                        2     // 取第2回合的資料
 #define MAX_ROUND                        3
 
-// #define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
+
+#define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
+#define SCHEDULE_INTERVAL 60000 // gsheet上傳完之後就 standby 10分鐘
+
 
 #define PROJECT_ID "my-esp32-proj-449103"
 #define CLIENT_EMAIL "myesp32app-service@my-esp32-proj-449103.iam.gserviceaccount.com"
@@ -122,7 +125,7 @@ public:
         if(detected_pills.empty()){
           // ei_impulse_result_bounding_box_t tmp={};
           // grid[grid_id]=&tmp;
-          ei_printf("No pills detected in this grid\n");
+          ei_printf("[pillbox_manager] No pills detected in this grid\n");
         }else{
           for(int i=0; i<detected_pills.size();i++){
             ei_printf("{%s, %f}, ", detected_pills[i].label, detected_pills[i].value);
@@ -141,7 +144,7 @@ public:
         for (size_t i = 0; i < grid.size(); i++) {
             // ei_printf("grid[%d]: %d items\n", (int)i, (int)grid[i].size());
             if(grid[i].empty()){
-              ei_printf("No pills detected, ( 0 items)\n");
+              ei_printf("[pillbox_manager] No pills detected, ( 0 items)\n");
             }
             else{
               ei_printf("%d items: ",(int)grid[i].size());
@@ -170,34 +173,36 @@ void uploadToGoogleSheet(pillbox_manager& manager){
   Serial.println();
 
   FirebaseJson valueRange;
-  valueRange.add("range", "Sheet1!A1:K19");
+  valueRange.add("range", "Sheet1!A1:K19"); // 目前支援9顆藥 C,D,E,...,J,K欄
   valueRange.add("majorDimension","ROWS");
+  // 設定標題列 +時間戳記
+  valueRange.set("values/[0]/[0]","compartment"); // A1
+  valueRange.set("values/[0]/[1]","count"); // B1
+  valueRange.set("values/[0]/[2]","medication"); // C1
+  valueRange.set("values/[0]/[3]",timestr); // D1
 
-  valueRange.set("values/[0]/[0]","compartment");
-  valueRange.set("values/[0]/[1]","count");
-  valueRange.set("values/[0]/[2]","medication");
-  valueRange.set("values/[0]/[3]",timestr);
   const auto& grid=manager.getGrid();
-  for(size_t i=0; i<grid.size(); i++){
-    
+  // for(size_t i=0; i<grid.size(); i++){ //原版本是依照 grid.size()遍歷:
+  for(size_t i=0; i<18; i++){
+    valueRange.set("values/["+String(i+1)+"]/[0]",String(i+1)); // Grid 編號 (A列)
+
     if(!grid[i].empty()){
-      const auto &item=grid[i][0];
+      // const auto &item=grid[i][0];
       // 關鍵修改：即使沒有偵測到藥丸，也要上傳該格資訊 
-      valueRange.set("values/["+String(i+1)+"]/[0]",String(i+1)); // Grid 編號 (A列)
-      if(grid[i].empty()){
-        // 如果該格沒有藥丸，上傳空值或預設值
-        valueRange.set("values/["+String(i+1)+"]/[1]",String(0)); // 藥丸數量 (B欄)
-        valueRange.set("values/["+String(i+1)+"]/[2]",String("N/A")); // 藥丸標籤="N/A" (C欄)
-
-      }
-
       valueRange.set("values/["+String(i+1)+"]/[1]",String(grid[i].size())); // 藥丸數量 (B欄)
       for(size_t j=0; j<grid[i].size();j++){
         valueRange.set("values/["+String(i+1)+"]/["+String(j+2)+"]",grid[i][j].label); // 標籤 (C欄,D,E,...)
-        // valueRange.set("values/[" + String(i) + "]/[j+2]", String(item.value, 2)); // 原本信心度,先保留寫法 (D欄,F,H...)
+      // valueRange.set("values/[" + String(i) + "]/[j+2]", String(item.value, 2)); // 原本信心度,先保留寫法 (D欄,F,H...)
       }
-    }
+    }else{
+        // 如果該格沒有藥丸，上傳空值或預設值
+        valueRange.set("values/["+String(i+1)+"]/[1]","0"); // 藥丸數量 (B欄)
+        valueRange.set("values/["+String(i+1)+"]/[2]","N/A"); // 藥丸標籤="N/A" (C欄)
+      
+        
+    }      
   }
+  
   FirebaseJson response;
   bool success = GSheet.values.update(&response, GOOGLE_SHEET_ID, "Sheet1!A1:K19", &valueRange);
   if (success) {
@@ -228,7 +233,12 @@ void tokenStatusCallback(TokenInfo info) {
     srand((unsigned) time(NULL)); // 設定隨機種子
     
     int num_detections=rand()%4; // 為產生隨機 0~3個結果,
-    
+    // if(num_detections==0){
+    //   // {"",0,0,0,0,1.0}
+    //   detected_pills.push_back({"",0,0,0,0,1.0});
+    //   return;
+    // }
+
     for(int i=0;i<num_detections; i++){
       static char label_buffer[16]; // 緩衝區來放標籤,
       delay(1000);
@@ -244,14 +254,8 @@ void tokenStatusCallback(TokenInfo info) {
       simulated_box.width=rand()%40+10; //隨機產生寬度w
       simulated_box.height=rand()%40+10; //隨機產生高度h
       detected_pills.push_back(simulated_box);
-
-
     }
-
-
   }
-
-
 #else // 跑EI推論
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -388,7 +392,7 @@ void setup() {
   // 有連上線再將 Google Sheet物件建立
   if(gsheet_status == WL_CONNECTED){
     GSheet.setTokenCallback(tokenStatusCallback);
-    GSheet.setPrerefreshSeconds(10 * 60);
+    GSheet.setPrerefreshSeconds(14 * 60);
     GSheet.begin(CLIENT_EMAIL, PROJECT_ID, PRIVATE_KEY);
   }
 
@@ -426,7 +430,7 @@ void loop()
     if(rounds>MAX_ROUND){
       pillbox_mgr.print_grid();
       uploadToGoogleSheet(pillbox_mgr);
-      ei_sleep(60000);
+      ei_sleep(SCHEDULE_INTERVAL);
       rounds=1;
     }
     
@@ -492,6 +496,9 @@ void loop()
     for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
         ei_printf("result.bbcount= %d\n",result.bounding_boxes_count);
         ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
+        if(result.bounding_boxes_count==0){
+          detected_pills.push_back({"",0,0,0,0,1.0});
+        }
         if (bb.value >= CLASS_CONFIDENCE) {
             detected_pills.push_back(bb);
             // detected_pills[i]=bb;
@@ -500,10 +507,7 @@ void loop()
 
     detect_count++;  // 增加偵測次數
     free(snapshot_buf);
-#endif //SUEDOINFERENCE    
-
-
-
+#endif //SUEDOINFERENCE
 }
 
 
