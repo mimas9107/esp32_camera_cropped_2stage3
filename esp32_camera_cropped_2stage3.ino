@@ -45,8 +45,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 #define MAX_ROUND                        3
 
 
-#define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
-#define SCHEDULE_INTERVAL 60000 // gsheet上傳完之後就 standby 10分鐘
+// #define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
+#define SCHEDULE_INTERVAL 600000 // gsheet上傳完之後就 standby 10分鐘
 
 
 #define PROJECT_ID "my-esp32-proj-449103"
@@ -204,13 +204,25 @@ void uploadToGoogleSheet(pillbox_manager& manager){
   }
   
   FirebaseJson response;
-  bool success = GSheet.values.update(&response, GOOGLE_SHEET_ID, "Sheet1!A1:K19", &valueRange);
-  if (success) {
-    Serial.println("Data uploaded successfully!");
-    return;
-  } else {
-    Serial.println("Failed to upload data.");
-    Serial.println(GSheet.errorReason());
+  
+  int retryUpdate=1;
+  int retry_i=0;
+  while(retry_i<3 && retryUpdate ==1){
+    bool success = GSheet.values.update(&response, GOOGLE_SHEET_ID, "Sheet1!A1:K19", &valueRange);
+    if (success) {
+      Serial.println("Data uploaded successfully!");
+      retryUpdate=0;
+      retry_i=0;
+      // return;
+      break;
+    } else {
+      Serial.println("Failed to upload data.");
+      Serial.println(GSheet.errorReason());
+      ei_printf("Retry upload data %d times\n",retry_i+1);
+      retry_i++;
+      retryUpdate=1;
+      ei_sleep(3000);
+    }
   }
 }
 void tokenStatusCallback(TokenInfo info) {
