@@ -48,6 +48,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 // #define SUEDOINFERENCE 1 // ※設定模擬開關 1關推論改用亂數產生模擬, 要推論這行要註解起來
 #define SCHEDULE_INTERVAL 600000 // gsheet上傳完之後就 standby 10分鐘
 
+// #define UPLOAD_SWITCH 1 // 設定要不要上傳 gsheet, 測試穩定性時可以關掉(註解起來)
 
 #define PROJECT_ID "my-esp32-proj-449103"
 #define CLIENT_EMAIL "myesp32app-service@my-esp32-proj-449103.iam.gserviceaccount.com"
@@ -438,10 +439,12 @@ void loop()
         return;
     }
 
-    // 若到第3回合, 暫停30秒 印出物件 pillbox_mgr紀錄的結，並上傳 Google sheet
+    // 若到第3回合, 暫停SCHEDULE_INTERVAL秒 印出物件 pillbox_mgr紀錄的結，並上傳 Google sheet
     if(rounds>MAX_ROUND){
       pillbox_mgr.print_grid();
+#if defined(UPLOAD_SWITCH) //設定要不要上傳 gsheet, 測試時這裡會不編譯
       uploadToGoogleSheet(pillbox_mgr);
+#endif
       ei_sleep(SCHEDULE_INTERVAL);
       rounds=1;
     }
@@ -508,9 +511,9 @@ void loop()
     for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
         ei_printf("result.bbcount= %d\n",result.bounding_boxes_count);
         ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if(result.bounding_boxes_count==0){
-          detected_pills.push_back({"",0,0,0,0,1.0});
-        }
+        // if(result.bounding_boxes_count==0){
+        //   detected_pills.push_back({"",0,0,0,0,1.0});
+        // }
         if (bb.value >= CLASS_CONFIDENCE) {
             detected_pills.push_back(bb);
             // detected_pills[i]=bb;
