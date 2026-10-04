@@ -1,16 +1,16 @@
 ---
 name:          README.md
-description:   ESP32-CAM 藥丸視覺辨識固件 — Edge Impulse TinyML 推論 + Google Sheets 上傳
+description:   ESP32-CAM 藥丸視覺辨識韌體 — Edge Impulse TinyML 推論 + Google Sheets 上傳
 created_date:  2026/07/15 14:00:00
 modified_date: 2026/07/15 14:00:00
 project_version: 1.00.00
-document_version: 1.0.0
+document_version: 1.0.1
 agent_sign: ['human/mimas', 'opencode/big-pickle']
 ---
 
-# ESP32-CAM 智慧藥盒固件
+# ESP32-CAM 智慧藥盒韌體
 
-ESP32-CAM 上運行的 AI 藥丸辨識固件。以 Edge Impulse FOMO 模型逐格偵測 18 格藥盒中的藥丸，偵測結果上傳至 Google Sheets。
+ESP32-CAM 上運行的 AI 藥丸辨識韌體。以 Edge Impulse FOMO 模型逐格偵測 18 格藥盒中的藥丸，偵測結果上傳至 Google Sheets。
 
 ## 功能
 
